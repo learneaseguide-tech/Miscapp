@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wallet Scanner</title>
+<style>
+:root{--bg:#f6f7f4;--card:#fff;--fg:#1c2420;--mut:#66726b;--acc:#1f7a4d;--accfg:#fff;--bd:#dde2dc;--bad:#b3261e;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--card:#1b2420;--fg:#eef2ef;--mut:#9aa8a0;--acc:#3ecf8e;--accfg:#06210f;--bd:#2b3731;--bad:#ff8a80;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121715;--card:#1b2420;--fg:#eef2ef;--mut:#9aa8a0;--acc:#3ecf8e;--accfg:#06210f;--bd:#2b3731;--bad:#ff8a80;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
+main{max-width:480px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--mut);margin:0 0 14px;font-size:14px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:16px;margin-bottom:14px}
+button{font:inherit;border:0;border-radius:12px;padding:12px 16px;cursor:pointer}
+.pri{background:var(--acc);color:var(--accfg);font-weight:600;width:100%}
+.sec{background:transparent;color:var(--fg);border:1px solid var(--bd)}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+input{font:inherit;width:100%;padding:10px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--fg)}
+label{font-size:12px;color:var(--mut);display:block;margin-bottom:4px}
+.cam{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:4/3}
+video{width:100%;height:100%;object-fit:cover;display:block}
+.frame{position:absolute;inset:14% 6%;border:3px dashed rgba(255,255,255,.75);border-radius:12px;pointer-events:none;transition:border-color .2s}
+.frame.lock{border-color:#ffd54a;border-style:solid}
+.frame.ok{border-color:#3ecf8e;border-style:solid}
+.frame.bad{border-color:#ff6b60;border-style:solid}
+.badge{position:absolute;left:8px;right:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;font-size:14px;padding:6px 10px;border-radius:10px;text-align:center}
+.msg{color:var(--mut);font-size:14px;margin:8px 0 0}
+.err{color:var(--bad)}
+.total{font-size:34px;font-weight:700;margin:0}
+.cur{font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--mut);text-transform:uppercase;margin:12px 0 4px}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{padding:8px 4px;text-align:right;border-bottom:1px solid var(--bd);font-size:15px}
+th:first-child,td:first-child{text-align:left}
+th{font-size:12px;color:var(--mut);font-weight:600}
+tfoot td{font-weight:700;border-bottom:0}
+.log{list-style:none;margin:0;padding:0}
+.log li{display:flex;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--bd);font-size:14px}
+.log b{min-width:70px}
+.log span{flex:1;font-family:ui-monospace,Menlo,monospace;color:var(--mut);overflow:hidden;text-overflow:ellipsis}
+.x{background:transparent;color:var(--mut);padding:2px 10px;font-size:18px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<main>
+  <h1>Wallet Scanner</h1>
+  <p class="sub">Hold a bill in the frame. When it's in focus, it scans by itself.</p>
+
+  <div class="card">
+    <div class="cam hide" id="cam">
+      <video id="vid" playsinline muted autoplay></video>
+      <div class="frame" id="frame"></div>
+      <div class="badge" id="badge">Starting camera…</div>
+    </div>
+    <div id="camOff">
+      <button class="pri" id="startBtn">Enable camera</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="sec" id="autoBtn">Auto-scan: on</button>
+      <button class="sec" id="photoBtn">Use photo instead</button>
+    </div>
+    <input type="file" id="file" accept="image/*" capture="environment" class="hide">
+    <p class="msg" id="status"></p>
+  </div>
+
+  <div class="card hide" id="result">
+    <div class="row">
+      <div><label for="cur">Currency</label><input id="cur" maxlength="4" autocapitalize="characters"></div>
+      <div><label for="den">Denomination</label><input id="den" type="number" inputmode="decimal" min="0" step="any"></div>
+    </div>
+    <div style="margin-top:8px"><label for="ser">Serial number</label><input id="ser" autocapitalize="characters"></div>
+    <p class="msg" id="note"></p>
+    <div class="row" style="margin-top:12px">
+      <button class="sec" id="discard">Discard</button>
+      <button class="pri" id="add">Add to wallet</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between"><label>Wallet total</label><button class="sec" id="reset" style="flex:none;padding:6px 12px;font-size:13px">Clear all</button></div>
+    <div id="totals"></div>
+  </div>
+
+  <div class="card">
+    <label>Scanned bills (newest first)</label>
+    <ul class="log" id="log"></ul>
+  </div>
+  <p class="sub">Scanning reads denomination and serial only. It cannot verify a bill is genuine.</p>
+</main>
+
+<script>
+(function(){
+  var KEY="walletscanner:v2";
+  var items=[];
+  try{var s=localStorage.getItem(KEY);if(s)items=JSON.parse(s)||[];}catch(e){items=[];}
+  var $=function(id){return document.getElementById(id)};
+  var sample=null,busy=false,auto=true,stream=null,armed=true,lastCall=0,stable=0,prev=null;
+  var cv=document.createElement("canvas"),cx=cv.getContext("2d",{willReadFrequently:true});
+  var esc=function(t){return String(t).replace(/[<>&"]/g,"")};
+
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(items));}catch(e){}}
+  function setStatus(t,err){var el=$("status");el.textContent=t;el.className="msg"+(err?" err":"");}
+  function badge(t,cls){$("badge").textContent=t;$("frame").className="frame"+(cls?" "+cls:"");}
+  function fmt(n){return Number(n).toLocaleString(undefined,{maximumFractionDigits:2})}
+  function buzz(){try{navigator.vibrate&&navigator.vibrate(60);}catch(e){}}
+
+  function render(){
+    var by={};
+    items.forEach(function(it){(by[it.cur]=by[it.cur]||{})[it.den]=(by[it.cur][it.den]||0)+1;});
+    var html="";
+    Object.keys(by).forEach(function(c){
+      var dens=Object.keys(by[c]).map(Number).sort(function(a,b){return b-a});
+      var tot=0,cnt=0,rows="";
+      dens.forEach(function(d){var n=by[c][d];tot+=d*n;cnt+=n;rows+='<tr><td>'+fmt(d)+'</td><td>× '+n+'</td><td>'+fmt(d*n)+'</td></tr>';});
+      html+='<p class="cur">'+esc(c)+'</p><p class="total">'+fmt(tot)+'</p><div class="scroll"><table><thead><tr><th>Bill</th><th>Qty</th><th>Amount</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr><td>Total</td><td>'+cnt+' bills</td><td>'+fmt(tot)+'</td></tr></tfoot></table></div>';
+    });
+    $("totals").innerHTML=html||'<p class="msg">Nothing scanned yet.</p>';
+    $("log").innerHTML=items.slice().reverse().map(function(it){
+      return '<li><b>'+esc(it.cur)+' '+fmt(it.den)+'</b><span>'+(it.serial?esc(it.serial):'serial not read')+'</span><button class="x" data-id="'+it.t+'" aria-label="Remove">×</button></li>';
+    }).join("")||'<li class="msg">No bills yet.</li>';
+  }
+  $("log").addEventListener("click",function(e){
+    var b=e.target.closest("button.x");if(!b)return;
+    var id=Number(b.getAttribute("data-id"));
+    items=items.filter(function(i){return i.t!==id});save();render();
+  });
+  $("reset").addEventListener("click",function(){if(items.length&&confirm("Clear everything in the tally?")){items=[];save();render();}});
+
+  function addItem(cur,den,serial){
+    serial=(serial||"").replace(/\s+/g,"").toUpperCase();
+    if(serial&&items.some(function(i){return i.serial===serial&&i.cur===cur})){return false;}
+    items.push({cur:cur,den:den,serial:serial,t:Date.now()});save();render();buzz();return true;
+  }
+
+  async function getSample(){
+    if(sample)return sample;
+    if(!window.claude||!claude.use)throw {code:"none"};
+    sample=await claude.use("sample");
+    if(!sample)throw {code:"not_granted"};
+    var lim=await sample.limits();
+    if(!lim||!lim.images)throw {code:"noimg"};
+    return sample;
+  }
+
+  function toBlob(src,w,h){
+    var m=1280,sc=Math.min(1,m/Math.max(w,h));
+    cv.width=Math.round(w*sc);cv.height=Math.round(h*sc);
+    cx.drawImage(src,0,0,cv.width,cv.height);
+    return new Promise(function(res,rej){cv.toBlob(function(b){b?res(b):rej(new Error("encode"))},"image/jpeg",.9);});
+  }
+
+  async function recognize(blob,manual){
+    busy=true;lastCall=Date.now();
+    badge("Reading bill…","lock");setStatus("Reading bill…");
+    try{
+      var sm=await getSample();
+      var p='Look at this photo. If a banknote is clearly visible, identify its currency and denomination and read its serial number exactly (letters and digits, no spaces; if the serial appears twice use the clearest). Reply with ONLY JSON: {"bill":true|false,"currency":"ISO code e.g. USD","denomination":number,"serial":"string or empty if unreadable","confidence":"high|medium|low","note":"short remark"}. If no banknote is clearly visible, set bill false.';
+      var r=await sm.json(p,{images:[blob],modelTier:"quick",cache:false});
+      var cur=String(r.currency||"").toUpperCase().slice(0,4),den=Number(r.denomination)||0,ser=String(r.serial||"");
+      if(!r.bill||!den||!cur){
+        if(manual){showCard(cur,den,ser,"Couldn't read a bill. Enter it manually or retake.");}
+        else{badge("No bill detected","bad");setStatus("Waiting for a bill…");}
+      }else if(!manual&&r.confidence==="high"&&ser){
+        var ok=addItem(cur,den,ser);
+        if(ok){badge("Added "+cur+" "+fmt(den),"ok");setStatus("Added "+cur+" "+fmt(den)+" · "+ser.toUpperCase()+". Remove the bill, then show the next one.");}
+        else{badge("Already scanned","bad");setStatus("Serial "+ser.toUpperCase()+" is already in your tally.",true);}
+      }else{
+        showCard(cur,den,ser,(r.confidence?"Confidence: "+r.confidence+". ":"")+(r.note||"")+" Check the details, then add.");
+        badge("Please confirm","lock");
+      }
+    }catch(e){
+      var c=e&&e.code;
+      if(c==="not_granted"||c==="none"){setStatus("AI scanning isn't available here. Open this page in the Claude app and allow access.",true);auto=false;$("autoBtn").textContent="Auto-scan: off";}
+      else if(c==="rate_limited"){setStatus("Too many scans. Pausing briefly.",true);lastCall=Date.now()+8000;}
+      else if(c==="noimg"){setStatus("Image scanning isn't enabled for this view.",true);auto=false;}
+      else{setStatus("Couldn't read that. Try again.",true);}
+      badge("Scan failed","bad");
+    }
+    armed=false;stable=0;busy=false;
+  }
+
+  function showCard(cur,den,ser,note){
+    $("cur").value=cur;$("den").value=den||"";$("ser").value=ser;$("note").textContent=note;
+    $("result").classList.remove("hide");
+  }
+  $("discard").addEventListener("click",function(){$("result").classList.add("hide");});
+  $("add").addEventListener("click",function(){
+    var cur=$("cur").value.trim().toUpperCase(),den=Number($("den").value);
+    if(!cur||!(den>0)){$("note").textContent="Enter a currency and a denomination.";return;}
+    if(addItem(cur,den,$("ser").value)){$("result").classList.add("hide");setStatus("Added "+cur+" "+fmt(den)+".");}
+    else{$("note").textContent="That serial number is already in your tally.";}
+  });
+
+  // ---- camera + auto focus detection ----
+  var W=96,H=72,sm=document.createElement("canvas");sm.width=W;sm.height=H;
+  var sx=sm.getContext("2d",{willReadFrequently:true});
+
+  function analyse(v){
+    sx.drawImage(v,v.videoWidth*.06,v.videoHeight*.14,v.videoWidth*.88,v.videoHeight*.72,0,0,W,H);
+    var d=sx.getImageData(0,0,W,H).data,g=new Float32Array(W*H),i;
+    for(i=0;i<W*H;i++)g[i]=.3*d[i*4]+.59*d[i*4+1]+.11*d[i*4+2];
+    var lap=0,n=0,x,y,c,v2;
+    for(y=1;y<H-1;y++)for(x=1;x<W-1;x++){c=y*W+x;v2=4*g[c]-g[c-1]-g[c+1]-g[c-W]-g[c+W];lap+=v2*v2;n++;}
+    var sharp=lap/n,diff=0;
+    if(prev){for(i=0;i<W*H;i+=3)diff+=Math.abs(g[i]-prev[i]);diff/=(W*H/3);}else diff=99;
+    prev=g;
+    return {sharp:sharp,diff:diff};
+  }
+
+  function tick(){
+    var v=$("vid");
+    if(!stream||v.readyState<2||!v.videoWidth){return;}
+    var a=analyse(v);
+    if(busy)return;
+    if(a.diff>10){armed=true;}                 // scene changed: ready for the next bill
+    var steady=a.diff<4, sharp=a.sharp>40;
+    if(!auto){badge("Auto-scan off","");return;}
+    if(!armed){badge("Remove bill / show the next one","");stable=0;return;}
+    if(steady&&sharp){stable++;badge(stable<7?"Hold steady…":"Scanning…","lock");}
+    else{stable=0;badge(!sharp&&steady?"Move closer / focus":"Hold steady…","");}
+    if(stable>=7&&Date.now()-lastCall>3000){
+      stable=0;
+      toBlob(v,v.videoWidth,v.videoHeight).then(function(b){recognize(b,false);}).catch(function(){});
+    }
+  }
+
+  async function startCam(){
+    try{
+      if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error("nocam");
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},audio:false});
+      var v=$("vid");v.srcObject=stream;await v.play();
+      $("cam").classList.remove("hide");$("camOff").classList.add("hide");
+      setStatus("");setInterval(tick,120);
+    }catch(e){
+      $("cam").classList.add("hide");$("camOff").classList.remove("hide");
+      setStatus("Live camera isn't available in this view or access was denied. Use 'Use photo instead' to scan with your camera app.",true);
+    }
+  }
+  $("startBtn").addEventListener("click",startCam);
+  $("autoBtn").addEventListener("click",function(){auto=!auto;armed=true;stable=0;this.textContent="Auto-scan: "+(auto?"on":"off");});
+  $("photoBtn").addEventListener("click",function(){$("file").click();});
+  $("file").addEventListener("change",async function(){
+    var f=this.files&&this.files[0];this.value="";if(!f||busy)return;
+    try{
+      var url=URL.createObjectURL(f),img=new Image();
+      await new Promise(function(r,j){img.onload=r;img.onerror=j;img.src=url;});
+      var b=await toBlob(img,img.width,img.height);URL.revokeObjectURL(url);
+      recognize(b,true);
+    }catch(e){setStatus("Couldn't load that photo.",true);}
+  });
+
+  render();startCam();
+})();
+</script>
+</body>
+</html>
